@@ -1,0 +1,78 @@
+{
+  "planNumber": "4000638715",
+  "planType": "Classic",
+  "quoteEffectiveDate": "19/04/2022",
+  "commencementDate": "01/04/2015",
+  "planholder": {
+    "name": "Mr Cedric Percival Keown",
+    "idNumber": "6908155180084",
+    "dateOfBirth": "15/08/1969",
+    "maritalStatus": "Married",
+    "residentialAddress": {
+      "fullAddress": "13, Clarkia Street, Durbanville, Durbanville,",
+      "street": "13",
+      "suburb": "Clarkia Street",
+      "city": "Durbanville",
+      "province": "Durbanville"
+    },
+    "postalAddress": {},
+    "contact": {
+      "email": "cedric.keown@gmail.com",
+      "cellphone": "0833777500",
+      "homePhone": "0219757852",
+      "workPhone": "0861007339"
+    }
+  },
+  "payment": {
+    "paymentType": "Debit Order",
+    "accountHolder": "Cedric Percival Keown",
+    "bank": "First National Bank",
+    "accountType": "Cheque",
+    "branchCode": "250655",
+    "debitDay": 1,
+    "paymentFrequency": "Monthly"
+  },
+  "motorVehicles": [
+    {
+      "vehicleNumber": 3,
+      "make": "MERCEDES-BENZ",
+      "model": "C250 AVANTGARDE A/T",
+      "registration": "CY308260",
+      "primaryDriver": "Mrs Charlene Abrosine Keown",
+      "effectiveDate": null,
+      "coverType": "Comprehensive",
+      "premium": 802.37,
+      "excess": {
+        "basic": 750.0,
+        "voluntary": 0.0,
+        "total": 750.0
+      },
+      "details": {
+        "yearOfManufacture": 2015,
+        "colour": "Blue",
+        "vinNumber": "WDD2050452R088613",
+        "engineNumber": "27492030415404",
+        "trackingDevice": "required: No 15/05/2020",
+        "financeHouse": "Wesbank (a division of FirstRand Bank)"
+      }
+    }
+  ],
+  "buildings": [],
+  "householdContents": {
+    "address": "13, Clarkia Street, Durbanville, Durbanville, Western Cape",
+    "effectiveDate": null,
+    "sumInsured": 495821.91,
+    "premium": 495.0,
+    "excess": {}
+  },
+  "personalLiability": {
+    "effectiveDate": null,
+    "sumInsured": 5000000.0,
+    "premium": 5.0
+  },
+  "currentMonthlyPremium": 4119.89,
+  "additionalBenefits": {
+    "sasria": 24.53,
+    "vitalitydrive": 170.0
+  }
+}

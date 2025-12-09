@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insurance Parser API Testbed</title>
+    
+    <!-- Phoenix Bootstrap Theme CSS -->
+    <link href="https://prium.github.io/phoenix/v1.23.0/assets/css/theme.min.css" rel="stylesheet" />
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <style>
+        :root {
+            --customapp-bg: #5CBDB4;
+            --customapp-text: #4A4A4A;
+            --customapp-bg-light: #7DD3CC;
+            --customapp-bg-dark: #4AA59D;
+        }
+        
+        body {
+            color: var(--customapp-text);
+            background-color: #f5f7fa;
+        }
+        
+        .brand-header {
+            background: linear-gradient(135deg, var(--customapp-bg) 0%, var(--customapp-bg-dark) 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .brand-btn {
+            background-color: var(--customapp-bg);
+            border-color: var(--customapp-bg);
+            color: white;
+        }
+        
+        .brand-btn:hover {
+            background-color: var(--customapp-bg-dark);
+            border-color: var(--customapp-bg-dark);
+            color: white;
+        }
+        
+        .brand-btn:disabled {
+            background-color: var(--customapp-bg-light);
+            border-color: var(--customapp-bg-light);
+        }
+        
+        .upload-zone {
+            border: 3px dashed var(--customapp-bg);
+            border-radius: 10px;
+            padding: 3rem;
+            text-align: center;
+            background-color: rgba(92, 189, 180, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-zone:hover {
+            background-color: rgba(92, 189, 180, 0.1);
+            border-color: var(--customapp-bg-dark);
+        }
+        
+        .upload-zone.dragover {
+            background-color: rgba(92, 189, 180, 0.2);
+            border-color: var(--customapp-bg-dark);
+            transform: scale(1.02);
+        }
+        
+        .file-info {
+            background-color: white;
+            border-left: 4px solid var(--customapp-bg);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .json-viewer {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1.5rem;
+            border-radius: 8px;
+            max-height: 600px;
+            overflow: auto;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .json-key {
+            color: #9cdcfe;
+        }
+        
+        .json-string {
+            color: #ce9178;
+        }
+        
+        .json-number {
+            color: #b5cea8;
+        }
+        
+        .json-boolean {
+            color: #569cd6;
+        }
+        
+        .json-null {
+            color: #569cd6;
+        }
+        
+        .structured-view {
+            background-color: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section-card {
+            border-left: 4px solid var(--customapp-bg);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .section-title {
+            color: var(--customapp-bg-dark);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .data-row {
+            display: flex;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .data-row:last-child {
+            border-bottom: none;
+        }
+        
+        .data-label {
+            font-weight: 600;
+            color: var(--customapp-text);
+            min-width: 150px;
+        }
+        
+        .data-value {
+            color: #6c757d;
+            flex: 1;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(92, 189, 180, 0.2);
+            border-top: 4px solid var(--customapp-bg);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert-custom {
+            border-left: 4px solid var(--customapp-bg);
+        }
+        
+        .tab-custom {
+            border-bottom: 3px solid transparent;
+            color: var(--customapp-text);
+        }
+        
+        .tab-custom.active {
+            border-bottom-color: var(--customapp-bg);
+            color: var(--customapp-bg-dark);
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        
+        .stats-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--customapp-bg-dark);
+        }
+        
+        .stats-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .badge-custom {
+            background-color: var(--customapp-bg);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+        }
+        
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="brand-header">
+        <div class="container">
+            <h1 class="mb-2">
+                <i class="fas fa-file-invoice me-2"></i>
+                Insurance Parser API Testbed
+            </h1>
+            <p class="mb-0 opacity-75">Upload and parse insurance policy schedule PDFs</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mb-5">
+        <!-- Configuration Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-cog me-2"></i>
+                            API Configuration
+                        </h5>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label for="apiEndpoint" class="form-label">API Endpoint URL</label>
+                                <input type="text" class="form-control" id="apiEndpoint" 
+                                       value="http://localhost:8000" 
+                                       placeholder="http://localhost:8000">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="insurerSelect" class="form-label">Insurer (Optional)</label>
+                                <select class="form-select" id="insurerSelect">
+                                    <option value="auto">Auto-detect</option>
+                                    <option value="discovery">Discovery</option>
+                                    <option value="santam">Santam</option>
+                                    <option value="old_mutual">Old Mutual</option>
+                                    <option value="outsurance">Outsurance</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-sm brand-btn" id="testConnectionBtn">
+                                <i class="fas fa-plug me-1"></i>
+                                Test Connection
+                            </button>
+                            <span id="connectionStatus" class="ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">
+                            <i class="fas fa-cloud-upload-alt me-2"></i>
+                            Upload PDF
+                        </h5>
+                        
+                        <div class="upload-zone" id="uploadZone">
+                            <i class="fas fa-file-pdf fa-4x mb-3" style="color: var(--customapp-bg);"></i>
+                            <h5>Drag and drop your PDF here</h5>
+                            <p class="text-muted">or click to browse</p>
+                            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                        </div>
+
+                        <div id="fileInfo" class="file-info" style="display: none;">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <i class="fas fa-file-pdf me-2" style="color: var(--customapp-bg);"></i>
+                                    <strong id="fileName"></strong>
+                                    <span class="ms-3 text-muted" id="fileSize"></span>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" id="removeFileBtn">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <button class="btn brand-btn btn-lg" id="parseBtn" disabled>
+                                <i class="fas fa-cogs me-2"></i>
+                                Parse Document
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingSection" style="display: none;">
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <div class="spinner"></div>
+                    <h5 class="mt-3">Processing your document...</h5>
+                    <p class="text-muted">This may take a few moments</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" style="display: none;">
+            <!-- Stats -->
+            <div class="row mb-4">
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card">
+                        <i class="fas fa-check-circle fa-2x mb-2" style="color: var(--customapp-bg);"></i>
+                        <div class="stats-value" id="statSuccess">Success</div>
+                        <div class="stats-label">Status</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card">
+                        <i class="fas fa-building fa-2x mb-2" style="color: var(--customapp-bg);"></i>
+                        <div class="stats-value" id="statInsurer">-</div>
+                        <div class="stats-label">Insurer</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card">
+                        <i class="fas fa-clock fa-2x mb-2" style="color: var(--customapp-bg);"></i>
+                        <div class="stats-value" id="statTime">-</div>
+                        <div class="stats-label">Processing Time</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="stats-card">
+                        <i class="fas fa-database fa-2x mb-2" style="color: var(--customapp-bg);"></i>
+                        <div class="stats-value" id="statFields">-</div>
+                        <div class="stats-label">Fields Extracted</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="card">
+                <div class="card-header bg-white">
+                    <ul class="nav nav-tabs card-header-tabs" id="resultTabs">
+                        <li class="nav-item">
+                            <a class="nav-link tab-custom active" href="#structured" data-bs-toggle="tab">
+                                <i class="fas fa-list me-1"></i>
+                                Structured View
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link tab-custom" href="#rawJson" data-bs-toggle="tab">
+                                <i class="fas fa-code me-1"></i>
+                                Raw JSON
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link tab-custom" href="#prettyJson" data-bs-toggle="tab">
+                                <i class="fas fa-brackets-curly me-1"></i>
+                                Pretty JSON
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content">
+                        <!-- Structured View Tab -->
+                        <div class="tab-pane fade show active" id="structured">
+                            <div id="structuredContent"></div>
+                        </div>
+
+                        <!-- Raw JSON Tab -->
+                        <div class="tab-pane fade" id="rawJson">
+                            <div style="position: relative;">
+                                <button class="btn btn-sm brand-btn copy-btn" onclick="copyToClipboard('rawJsonContent')">
+                                    <i class="fas fa-copy me-1"></i>
+                                    Copy
+                                </button>
+                                <div class="json-viewer">
+                                    <pre id="rawJsonContent"></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pretty JSON Tab -->
+                        <div class="tab-pane fade" id="prettyJson">
+                            <div style="position: relative;">
+                                <button class="btn btn-sm brand-btn copy-btn" onclick="copyToClipboard('prettyJsonContent')">
+                                    <i class="fas fa-copy me-1"></i>
+                                    Copy
+                                </button>
+                                <div class="json-viewer">
+                                    <pre id="prettyJsonContent"></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-3">
+                <button class="btn brand-btn" id="downloadJsonBtn">
+                    <i class="fas fa-download me-2"></i>
+                    Download JSON
+                </button>
+                <button class="btn btn-outline-secondary" id="parseAnotherBtn">
+                    <i class="fas fa-redo me-2"></i>
+                    Parse Another Document
+                </button>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="errorSection" style="display: none;">
+            <div class="alert alert-danger alert-custom" role="alert">
+                <h5 class="alert-heading">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error Processing Document
+                </h5>
+                <p id="errorMessage" class="mb-0"></p>
+                <hr>
+                <button class="btn btn-outline-danger btn-sm" id="tryAgainBtn">
+                    <i class="fas fa-redo me-1"></i>
+                    Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phoenix Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let selectedFile = null;
+        let parsedData = null;
+        let startTime = null;
+
+        // DOM Elements
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFileBtn = document.getElementById('removeFileBtn');
+        const parseBtn = document.getElementById('parseBtn');
+        const loadingSection = document.getElementById('loadingSection');
+        const resultsSection = document.getElementById('resultsSection');
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        const apiEndpoint = document.getElementById('apiEndpoint');
+        const insurerSelect = document.getElementById('insurerSelect');
+        const testConnectionBtn = document.getElementById('testConnectionBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+
+        // Upload Zone Click
+        uploadZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File Selection
+        fileInput.addEventListener('change', (e) => {
+            handleFileSelect(e.target.files[0]);
+        });
+
+        // Drag and Drop
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFileSelect(file);
+            } else {
+                alert('Please drop a PDF file');
+            }
+        });
+
+        // Handle File Selection
+        function handleFileSelect(file) {
+            if (!file) return;
+            
+            if (file.type !== 'application/pdf') {
+                alert('Please select a PDF file');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatBytes(file.size);
+            fileInfo.style.display = 'block';
+            parseBtn.disabled = false;
+            
+            // Hide previous results
+            resultsSection.style.display = 'none';
+            errorSection.style.display = 'none';
+        }
+
+        // Remove File
+        removeFileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
+            parseBtn.disabled = true;
+            resultsSection.style.display = 'none';
+            errorSection.style.display = 'none';
+        });
+
+        // Test Connection
+        testConnectionBtn.addEventListener('click', async () => {
+            const endpoint = apiEndpoint.value.trim();
+            connectionStatus.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Testing...</span>';
+            
+            try {
+                const response = await fetch(`${endpoint}/`);
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'healthy') {
+                    connectionStatus.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> Connected</span>';
+                } else {
+                    connectionStatus.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Unexpected response</span>';
+                }
+            } catch (error) {
+                connectionStatus.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Connection failed</span>';
+            }
+        });
+
+        // Parse Button Click
+        parseBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const endpoint = apiEndpoint.value.trim();
+            const insurer = insurerSelect.value;
+
+            // Show loading
+            loadingSection.style.display = 'block';
+            resultsSection.style.display = 'none';
+            errorSection.style.display = 'none';
+            startTime = Date.now();
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                if (insurer !== 'auto') {
+                    formData.append('insurer', insurer);
+                }
+
+                const response = await fetch(`${endpoint}/parse`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to parse document');
+                }
+
+                parsedData = data;
+                displayResults(data);
+            } catch (error) {
+                displayError(error.message);
+            } finally {
+                loadingSection.style.display = 'none';
+            }
+        });
+
+        // Display Results
+        function displayResults(data) {
+            const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+            
+            // Update stats
+            document.getElementById('statInsurer').textContent = data.insurer || 'Unknown';
+            document.getElementById('statTime').textContent = `${processingTime}s`;
+            document.getElementById('statFields').textContent = countFields(data.data);
+
+            // Raw JSON
+            document.getElementById('rawJsonContent').textContent = JSON.stringify(data, null, 2);
+
+            // Pretty JSON with syntax highlighting
+            document.getElementById('prettyJsonContent').innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+
+            // Structured view
+            displayStructuredView(data.data);
+
+            resultsSection.style.display = 'block';
+        }
+
+        // Display Structured View
+        function displayStructuredView(data) {
+            const container = document.getElementById('structuredContent');
+            container.innerHTML = '';
+
+            // Policy Information
+            if (data.policy_number || data.plan_type || data.commencement_date) {
+                container.appendChild(createSection('Policy Information', {
+                    'Policy Number': data.policy_number,
+                    'Plan Type': data.plan_type,
+                    'Commencement Date': data.commencement_date,
+                    'Monthly Premium': data.monthly_premium
+                }, 'fa-file-contract'));
+            }
+
+            // Planholder
+            if (data.planholder) {
+                container.appendChild(createSection('Planholder', {
+                    'Name': data.planholder.name,
+                    'ID Number': data.planholder.id_number,
+                    'Date of Birth': data.planholder.date_of_birth,
+                    'Marital Status': data.planholder.marital_status,
+                    'Email': data.planholder.email,
+                    'Cell Phone': data.planholder.cell_phone,
+                    'Home Phone': data.planholder.home_phone
+                }, 'fa-user'));
+            }
+
+            // Payment Details
+            if (data.payment_details) {
+                container.appendChild(createSection('Payment Details', {
+                    'Method': data.payment_details.method,
+                    'Bank': data.payment_details.bank,
+                    'Account Type': data.payment_details.account_type,
+                    'Branch Code': data.payment_details.branch_code,
+                    'Debit Day': data.payment_details.debit_day
+                }, 'fa-credit-card'));
+            }
+
+            // Motor Vehicles
+            if (data.motor_vehicles && data.motor_vehicles.length > 0) {
+                data.motor_vehicles.forEach((vehicle, index) => {
+                    container.appendChild(createSection(`Motor Vehicle ${index + 1}`, {
+                        'Description': vehicle.description,
+                        'Registration': vehicle.registration,
+                        'Year': vehicle.year,
+                        'Sum Insured': vehicle.sum_insured,
+                        'Monthly Premium': vehicle.monthly_premium,
+                        'Use': vehicle.use,
+                        'Excess': vehicle.excess
+                    }, 'fa-car'));
+                });
+            }
+
+            // Buildings
+            if (data.buildings && data.buildings.length > 0) {
+                data.buildings.forEach((building, index) => {
+                    container.appendChild(createSection(`Building ${index + 1}`, {
+                        'Address': building.address,
+                        'Sum Insured': building.sum_insured,
+                        'Monthly Premium': building.monthly_premium,
+                        'Excess': building.excess
+                    }, 'fa-home'));
+                });
+            }
+
+            // Household Contents
+            if (data.household_contents) {
+                container.appendChild(createSection('Household Contents', {
+                    'Sum Insured': data.household_contents.sum_insured,
+                    'Monthly Premium': data.household_contents.monthly_premium,
+                    'Excess': data.household_contents.excess
+                }, 'fa-couch'));
+            }
+
+            // Personal Liability
+            if (data.personal_liability) {
+                container.appendChild(createSection('Personal Liability', {
+                    'Sum Insured': data.personal_liability.sum_insured,
+                    'Monthly Premium': data.personal_liability.monthly_premium
+                }, 'fa-shield-alt'));
+            }
+
+            // Additional Benefits
+            if (data.additional_benefits && data.additional_benefits.length > 0) {
+                const benefits = {};
+                data.additional_benefits.forEach(benefit => {
+                    benefits[benefit.name] = benefit.premium;
+                });
+                container.appendChild(createSection('Additional Benefits', benefits, 'fa-plus-circle'));
+            }
+        }
+
+        // Create Section Card
+        function createSection(title, data, icon) {
+            const section = document.createElement('div');
+            section.className = 'section-card';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'section-title';
+            titleEl.innerHTML = `<i class="fas ${icon}"></i> ${title}`;
+            section.appendChild(titleEl);
+
+            for (const [key, value] of Object.entries(data)) {
+                if (value !== null && value !== undefined && value !== '') {
+                    const row = document.createElement('div');
+                    row.className = 'data-row';
+                    row.innerHTML = `
+                        <div class="data-label">${key}:</div>
+                        <div class="data-value">${formatValue(value)}</div>
+                    `;
+                    section.appendChild(row);
+                }
+            }
+
+            return section;
+        }
+
+        // Format Value
+        function formatValue(value) {
+            if (typeof value === 'object' && value !== null) {
+                return JSON.stringify(value);
+            }
+            return value;
+        }
+
+        // Display Error
+        function displayError(message) {
+            errorMessage.textContent = message;
+            errorSection.style.display = 'block';
+            resultsSection.style.display = 'none';
+        }
+
+        // Try Again Button
+        document.getElementById('tryAgainBtn').addEventListener('click', () => {
+            errorSection.style.display = 'none';
+        });
+
+        // Parse Another Button
+        document.getElementById('parseAnotherBtn').addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
+            parseBtn.disabled = true;
+            resultsSection.style.display = 'none';
+            parsedData = null;
+        });
+
+        // Download JSON Button
+        document.getElementById('downloadJsonBtn').addEventListener('click', () => {
+            if (!parsedData) return;
+
+            const dataStr = JSON.stringify(parsedData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `parsed_${selectedFile.name.replace('.pdf', '')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Utility Functions
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function countFields(obj) {
+            let count = 0;
+            function traverse(o) {
+                for (let key in o) {
+                    if (o.hasOwnProperty(key)) {
+                        if (o[key] !== null && o[key] !== undefined && o[key] !== '') {
+                            count++;
+                            if (typeof o[key] === 'object' && !Array.isArray(o[key])) {
+                                traverse(o[key]);
+                            } else if (Array.isArray(o[key])) {
+                                o[key].forEach(item => {
+                                    if (typeof item === 'object') {
+                                        traverse(item);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            traverse(obj);
+            return count;
+        }
+
+        function syntaxHighlight(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                // Show feedback
+                const btn = event.target.closest('button');
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied!';
+                btn.classList.add('btn-success');
+                btn.classList.remove('brand-btn');
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('brand-btn');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        // Auto-test connection on page load
+        window.addEventListener('load', () => {
+            testConnectionBtn.click();
+        });
+    </script>
+</body>
+</html>
