@@ -14,6 +14,10 @@ import logging
 from enum import Enum
 import pdfplumber
 import re
+import base64
+import requests
+from pydantic import BaseModel
+from urllib.parse import urlparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +39,14 @@ class InsurerType(str, Enum):
     OUTSURANCE = "outsurance"
     AUTO = "auto"  # Auto-detect
 
+class ParseUrlRequest(BaseModel):
+    pdf_url: str
+    insurer: Optional[InsurerType] = InsurerType.AUTO
+
+class ParseJsonRequest(BaseModel):
+    filename: str
+    insurer: Optional[InsurerType] = InsurerType.AUTO
+    file_base64: str  # base64-encoded PDF bytes
 
 class BaseParser:
     """Base class for insurance policy parsers"""
@@ -437,6 +449,118 @@ async def supported_insurers():
         "auto_detect": True
     }
 
+
+@app.post("/parse-from-url")
+async def parse_from_url(payload: ParseUrlRequest):
+    """
+    Parse an insurance policy schedule from a public PDF URL.
+
+    Body:
+        {
+          "pdf_url": "https://example.com/policy.pdf",
+          "insurer": "auto"
+        }
+    """
+
+    # Validate URL format
+    parsed = urlparse(payload.pdf_url)
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid PDF URL")
+
+    if not payload.pdf_url.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="URL must point to a PDF file")
+
+    try:
+        logger.info(f"Downloading PDF from URL: {payload.pdf_url}")
+
+        # Download the file
+        response = requests.get(payload.pdf_url, timeout=30)
+        response.raise_for_status()
+
+        pdf_bytes = response.content
+
+        if not pdf_bytes or len(pdf_bytes) < 100:
+            raise HTTPException(status_code=400, detail="Downloaded PDF is empty or too small")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to download PDF: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to download PDF: {str(e)}")
+
+    # Save to temp file for parsing
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_path = tmp_file.name
+        tmp_file.write(pdf_bytes)
+
+    try:
+        logger.info(
+            f"Processing PDF from URL, size: {len(pdf_bytes)} bytes, "
+            f"insurer: {payload.insurer}"
+        )
+
+        parser = ParserFactory.create_parser(tmp_path, payload.insurer)
+        parser.extract_text()
+        result = parser.parse()
+
+        logger.info("Successfully parsed PDF from URL")
+
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        logger.error(f"Error parsing PDF from URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error parsing PDF: {str(e)}")
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)    
+@app.post("/parse-json")
+async def parse_policy_json(payload: ParseJsonRequest):
+    """
+    Parse an insurance policy schedule PDF from a JSON body.
+
+    Body:
+        {
+          "filename": "policy.pdf",
+          "insurer": "auto",
+          "file_base64": "<base64-encoded PDF bytes>"
+        }
+    """
+
+    # Decode base64
+    try:
+        pdf_bytes = base64.b64decode(payload.file_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="file_base64 must be valid base64-encoded data")
+
+    # Optional: basic sanity check on size
+    if not pdf_bytes or len(pdf_bytes) < 100:
+        raise HTTPException(status_code=400, detail="Decoded PDF data looks too small or empty")
+
+    # Write to temporary file (so we can reuse existing ParserFactory logic)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_path = tmp_file.name
+        tmp_file.write(pdf_bytes)
+
+    try:
+        logger.info(
+            f"Processing JSON-uploaded file: {payload.filename}, size: {len(pdf_bytes)} bytes, "
+            f"insurer: {payload.insurer}"
+        )
+
+        parser = ParserFactory.create_parser(tmp_path, payload.insurer)
+        parser.extract_text()
+        result = parser.parse()
+
+        logger.info(f"Successfully parsed JSON-uploaded file: {payload.filename}")
+
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        logger.error(f"Error parsing JSON-uploaded file {payload.filename}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error parsing PDF: {str(e)}")
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 @app.post("/parse")
 async def parse_policy(
