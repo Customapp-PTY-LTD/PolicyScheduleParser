@@ -1,20 +1,47 @@
+# Docker Compose for Insurance Policy Parser API
+# 
+# Usage:
+#   Local development:  docker-compose up app
+#   Lambda testing:     docker-compose up lambda
+#   Build for Lambda:   docker-compose build lambda
+
 version: '3.8'
 
 services:
-  insurance-parser-api:
-    build: .
-    container_name: insurance-parser-api
+  # Local development server (FastAPI with Uvicorn)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
     ports:
       - "8000:8000"
-    environment:
-      - LOG_LEVEL=INFO
-      - MAX_UPLOAD_SIZE=10485760  # 10MB
     volumes:
-      - ./uploads:/tmp/uploads
-    restart: unless-stopped
+      # Mount source code for live reloading during development
+      - ./insurance_parser_api.py:/app/insurance_parser_api.py
+      - ./document_types.py:/app/document_types.py
+      - ./parsers:/app/parsers
+    environment:
+      - LOG_LEVEL=DEBUG
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+
+  # Lambda container for testing Lambda deployment locally
+  lambda:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9000:8080"
+    environment:
+      - LOG_LEVEL=INFO
+    # Test with: curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"httpMethod":"GET","path":"/"}'
+
+  # Lambda container for ECR push (production build)
+  lambda-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/insurance-parser:latest

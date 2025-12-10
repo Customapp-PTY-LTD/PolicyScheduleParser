@@ -8,16 +8,21 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
 import os
-from typing import Dict, Optional
-from pathlib import Path
+from typing import Optional
 import logging
-from enum import Enum
-import pdfplumber
-import re
 import base64
 import requests
 from pydantic import BaseModel
 from urllib.parse import urlparse
+
+from document_types import (
+    DocumentGuid,
+    ParserRegistry,
+    get_document_info,
+    list_supported_insurers,
+    DOCUMENT_TYPE_REGISTRY
+)
+from parsers import GenericParser
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,401 +32,53 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Insurance Policy Parser API",
     description="Extract structured data from insurance policy schedule PDFs",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 
-class InsurerType(str, Enum):
-    """Supported insurance providers"""
-    DISCOVERY = "discovery"
-    SANTAM = "santam"
-    OLD_MUTUAL = "old_mutual"
-    OUTSURANCE = "outsurance"
-    AUTO = "auto"  # Auto-detect
-
+# Request Models
 class ParseUrlRequest(BaseModel):
+    """Request model for parsing PDF from URL"""
     pdf_url: str
-    insurer: Optional[InsurerType] = InsurerType.AUTO
+    document_guid: Optional[str] = DocumentGuid.AUTO_DETECT.value
+
 
 class ParseJsonRequest(BaseModel):
+    """Request model for parsing PDF from base64-encoded data"""
     filename: str
-    insurer: Optional[InsurerType] = InsurerType.AUTO
+    document_guid: Optional[str] = DocumentGuid.AUTO_DETECT.value
     file_base64: str  # base64-encoded PDF bytes
 
-class BaseParser:
-    """Base class for insurance policy parsers"""
-    
-    def __init__(self, pdf_path: str):
-        self.pdf_path = pdf_path
-        self.pages_text = {}
-        
-    def extract_text(self):
-        """Extract text from all pages"""
-        with pdfplumber.open(self.pdf_path) as pdf:
-            for i, page in enumerate(pdf.pages, start=1):
-                self.pages_text[i] = page.extract_text()
-    
-    def identify_insurer(self) -> str:
-        """Identify the insurance company from the document"""
-        raise NotImplementedError
-    
-    def parse(self) -> Dict:
-        """Parse the document and return structured data"""
-        raise NotImplementedError
 
-
-class DiscoveryParser(BaseParser):
-    """Parser for Discovery Insure policy schedules"""
+# Helper Functions
+def create_parser(pdf_path: str, document_guid: str):
+    """
+    Create appropriate parser for the document.
     
-    def identify_insurer(self) -> str:
-        """Check if this is a Discovery document"""
-        page1 = self.pages_text.get(1, "") + self.pages_text.get(2, "")
-        if "Discovery Insure" in page1:
-            return "discovery"
-        return None
-    
-    def parse(self) -> Dict:
-        """Parse Discovery Insure policy schedule"""
-        policy = {
-            "insurer": "Discovery Insure",
-            "planNumber": None,
-            "planType": None,
-            "quoteEffectiveDate": None,
-            "commencementDate": None,
-            "planholder": {},
-            "payment": {},
-            "motorVehicles": [],
-            "buildings": [],
-            "householdContents": None,
-            "personalLiability": None,
-            "currentMonthlyPremium": None,
-            "additionalBenefits": {}
-        }
+    Args:
+        pdf_path: Path to the PDF file
+        document_guid: Document type GUID or AUTO_DETECT
         
-        # Parse different sections
-        self._parse_header_info(policy)
-        self._parse_planholder_details(policy)
-        self._parse_payment_details(policy)
-        self._parse_summary_of_cover(policy)
-        self._parse_motor_vehicles(policy)
-        self._parse_buildings(policy)
-        self._parse_household_contents(policy)
-        self._parse_personal_liability(policy)
-        
-        return policy
-    
-    def _parse_header_info(self, policy: Dict):
-        """Extract plan header information"""
-        page2 = self.pages_text.get(2, "")
-        
-        match = re.search(r'Plan number\s+(\d+)', page2)
-        if match:
-            policy["planNumber"] = match.group(1)
-        
-        match = re.search(r'Plan type:\s+(\w+)', page2)
-        if match:
-            policy["planType"] = match.group(1)
-        
-        match = re.search(r'Quote effective date:\s+(\d{2}/\d{2}/\d{4})', page2)
-        if match:
-            policy["quoteEffectiveDate"] = match.group(1)
-        
-        match = re.search(r'Commencement date:\s+(\d{2}/\d{2}/\d{4})', page2)
-        if match:
-            policy["commencementDate"] = match.group(1)
-    
-    def _parse_planholder_details(self, policy: Dict):
-        """Extract planholder information"""
-        page2 = self.pages_text.get(2, "")
-        
-        planholder = {
-            "name": None,
-            "idNumber": None,
-            "dateOfBirth": None,
-            "maritalStatus": None,
-            "residentialAddress": {},
-            "contact": {}
-        }
-        
-        match = re.search(r'Planholder\s+([^\n]+?)\s+Planholder type', page2)
-        if match:
-            planholder["name"] = match.group(1).strip()
-        
-        match = re.search(r'Identity/passport number\s+(\d+)', page2)
-        if match:
-            planholder["idNumber"] = match.group(1)
-        
-        match = re.search(r'Date of birth\s+(\d{2}/\d{2}/\d{4})', page2)
-        if match:
-            planholder["dateOfBirth"] = match.group(1)
-        
-        match = re.search(r'Marital status\s+(\w+)', page2)
-        if match:
-            planholder["maritalStatus"] = match.group(1)
-        
-        match = re.search(r'Email address\s+([^\s]+@[^\s]+)', page2)
-        if match:
-            planholder["contact"]["email"] = match.group(1)
-        
-        match = re.search(r'Cellphone number\s+(\d+)', page2)
-        if match:
-            planholder["contact"]["cellphone"] = match.group(1)
-        
-        policy["planholder"] = planholder
-    
-    def _parse_payment_details(self, policy: Dict):
-        """Extract payment information"""
-        page3 = self.pages_text.get(3, "")
-        
-        payment = {
-            "paymentType": "Debit Order" if "Debit Order" in page3 else None,
-            "accountHolder": None,
-            "bank": None,
-            "accountType": None,
-            "branchCode": None,
-            "debitDay": None,
-            "paymentFrequency": None
-        }
-        
-        match = re.search(r'Account holder\s+(.+?)\s+Account number', page3)
-        if match:
-            payment["accountHolder"] = match.group(1).strip()
-        
-        match = re.search(r'Financial institution\s+(.+?)\s+Account type', page3)
-        if match:
-            payment["bank"] = match.group(1).strip()
-        
-        match = re.search(r'Account type\s+(\w+)', page3)
-        if match:
-            payment["accountType"] = match.group(1)
-        
-        match = re.search(r'Branch name and code\s+Branch \d+\s+(\d+)', page3)
-        if match:
-            payment["branchCode"] = match.group(1)
-        
-        match = re.search(r'Debit day\s+(\d+)', page3)
-        if match:
-            payment["debitDay"] = int(match.group(1))
-        
-        match = re.search(r'Payment frequency\s+(\w+)', page3)
-        if match:
-            payment["paymentFrequency"] = match.group(1)
-        
-        policy["payment"] = payment
-    
-    def _parse_summary_of_cover(self, policy: Dict):
-        """Extract summary and monthly premium"""
-        page4 = self.pages_text.get(4, "")
-        
-        match = re.search(r'Current monthly premium\s+R\s*([\d\s,]+\.\d{2})', page4)
-        if match:
-            premium_str = match.group(1).replace(' ', '').replace(',', '')
-            policy["currentMonthlyPremium"] = float(premium_str)
-        
-        match = re.search(r'SASRIA\s+R([\d.]+)', page4)
-        if match:
-            policy["additionalBenefits"]["sasria"] = float(match.group(1))
-        
-        match = re.search(r'Vitalitydrive.*?R([\d.]+)', page4)
-        if match:
-            policy["additionalBenefits"]["vitalitydrive"] = float(match.group(1))
-    
-    def _parse_motor_vehicles(self, policy: Dict):
-        """Extract motor vehicle information"""
-        vehicles = []
-        
-        for page_num in range(6, 12):
-            page_text = self.pages_text.get(page_num, "")
-            
-            match = re.search(r'(\d+)\.\s+([A-Z-]+),\s+([A-Z0-9\s/]+?)\s+Registration\s+(\w+)', page_text)
-            if match:
-                vehicle = {
-                    "vehicleNumber": int(match.group(1)),
-                    "make": match.group(2),
-                    "model": match.group(3).strip(),
-                    "registration": match.group(4),
-                    "primaryDriver": None,
-                    "premium": None,
-                    "excess": {},
-                    "details": {}
-                }
-                
-                driver_match = re.search(r'Primary driver details:\s+(.+)', page_text)
-                if driver_match:
-                    vehicle["primaryDriver"] = driver_match.group(1).strip()
-                
-                premium_match = re.search(r'Total\s+R([\d,]+\.\d{2})', page_text)
-                if premium_match:
-                    vehicle["premium"] = float(premium_match.group(1).replace(',', ''))
-                
-                excess_match = re.search(r'Excess motor.*?Basic\s+R([\d,]+\.\d{2}).*?Total\s+R([\d,]+\.\d{2})', page_text, re.DOTALL)
-                if excess_match:
-                    vehicle["excess"] = {
-                        "basic": float(excess_match.group(1).replace(',', '')),
-                        "total": float(excess_match.group(2).replace(',', ''))
-                    }
-                
-                year_match = re.search(r'Year of manufacture\s+(\d{4})', page_text)
-                if year_match:
-                    vehicle["details"]["yearOfManufacture"] = int(year_match.group(1))
-                
-                vin_match = re.search(r'VIN number\s+([A-Z0-9]+)', page_text)
-                if vin_match:
-                    vehicle["details"]["vinNumber"] = vin_match.group(1)
-                
-                vehicles.append(vehicle)
-        
-        policy["motorVehicles"] = vehicles
-    
-    def _parse_buildings(self, policy: Dict):
-        """Extract building information"""
-        buildings = []
-        
-        for page_num in range(12, 16):
-            page_text = self.pages_text.get(page_num, "")
-            
-            if "Buildings" in page_text and re.search(r'\d+\.\s+.+', page_text):
-                building = {
-                    "address": None,
-                    "effectiveDate": None,
-                    "sumInsured": None,
-                    "premium": None,
-                    "coverType": "Comprehensive"
-                }
-                
-                addr_match = re.search(r'\d+\.\s+(.+?)\s+(?:Registration|Plan details)', page_text)
-                if addr_match:
-                    building["address"] = addr_match.group(1).strip()
-                
-                sum_match = re.search(r'Sum insured.*?R\s*([\d,\s]+\.\d{2})', page_text, re.DOTALL)
-                if sum_match:
-                    sum_str = sum_match.group(1).replace(',', '').replace(' ', '')
-                    building["sumInsured"] = float(sum_str)
-                
-                prem_match = re.search(r'Premium\s+R([\d.]+)', page_text)
-                if prem_match:
-                    building["premium"] = float(prem_match.group(1))
-                
-                date_match = re.search(r'Effective date:\s+(\d{2}/\d{2}/\d{4})', page_text)
-                if date_match:
-                    building["effectiveDate"] = date_match.group(1)
-                
-                if building["address"]:
-                    buildings.append(building)
-        
-        policy["buildings"] = buildings
-    
-    def _parse_household_contents(self, policy: Dict):
-        """Extract household contents information"""
-        for page_num in range(16, 18):
-            page_text = self.pages_text.get(page_num, "")
-            
-            if "Household contents" in page_text:
-                contents = {
-                    "address": None,
-                    "sumInsured": None,
-                    "premium": None
-                }
-                
-                sum_match = re.search(r'Sum insured.*?R\s*([\d,\s]+\.\d{2})', page_text, re.DOTALL)
-                if sum_match:
-                    sum_str = sum_match.group(1).replace(',', '').replace(' ', '')
-                    contents["sumInsured"] = float(sum_str)
-                
-                prem_match = re.search(r'Total.*?R([\d,.]+)', page_text, re.DOTALL)
-                if prem_match:
-                    contents["premium"] = float(prem_match.group(1).replace(',', ''))
-                
-                policy["householdContents"] = contents
-                break
-    
-    def _parse_personal_liability(self, policy: Dict):
-        """Extract personal liability information"""
-        for page_num in range(18, 20):
-            page_text = self.pages_text.get(page_num, "")
-            
-            if "Personal liability" in page_text:
-                liability = {
-                    "sumInsured": None,
-                    "premium": None
-                }
-                
-                sum_match = re.search(r'Sum insured.*?R([\d,]+\.\d{2})', page_text, re.DOTALL)
-                if sum_match:
-                    liability["sumInsured"] = float(sum_match.group(1).replace(',', ''))
-                
-                prem_match = re.search(r'Premium.*?R([\d.]+)', page_text, re.DOTALL)
-                if prem_match:
-                    liability["premium"] = float(prem_match.group(1))
-                
-                policy["personalLiability"] = liability
-                break
-
-
-class SantamParser(BaseParser):
-    """Parser for Santam policy schedules (stub - to be implemented)"""
-    
-    def identify_insurer(self) -> str:
-        page1 = self.pages_text.get(1, "")
-        if "Santam" in page1:
-            return "santam"
-        return None
-    
-    def parse(self) -> Dict:
-        return {
-            "insurer": "Santam",
-            "error": "Santam parser not yet implemented"
-        }
-
-
-class GenericParser(BaseParser):
-    """Generic fallback parser for unknown formats"""
-    
-    def identify_insurer(self) -> str:
-        return "unknown"
-    
-    def parse(self) -> Dict:
-        """Basic extraction when insurer not recognized"""
-        return {
-            "insurer": "Unknown",
-            "rawText": {
-                f"page{i}": text[:500] + "..." if len(text) > 500 else text
-                for i, text in list(self.pages_text.items())[:3]
-            },
-            "message": "Insurance provider not recognized. Returning raw text from first 3 pages."
-        }
-
-
-class ParserFactory:
-    """Factory to create appropriate parser based on insurer"""
-    
-    PARSERS = {
-        InsurerType.DISCOVERY: DiscoveryParser,
-        InsurerType.SANTAM: SantamParser,
-    }
-    
-    @staticmethod
-    def create_parser(pdf_path: str, insurer_type: InsurerType = InsurerType.AUTO) -> BaseParser:
-        """Create appropriate parser for the document"""
-        
-        if insurer_type == InsurerType.AUTO:
-            # Auto-detect insurer
-            temp_parser = GenericParser(pdf_path)
-            temp_parser.extract_text()
-            
-            # Try each parser's identification
-            for parser_class in [DiscoveryParser, SantamParser]:
-                parser = parser_class(pdf_path)
-                parser.pages_text = temp_parser.pages_text
-                if parser.identify_insurer():
-                    return parser
-            
-            # Fallback to generic parser
-            return temp_parser
-        
+    Returns:
+        Initialized parser instance with text extracted
+    """
+    if document_guid == DocumentGuid.AUTO_DETECT.value:
+        # Auto-detect document type
+        parser_class = ParserRegistry.get_parser_for_auto_detect(pdf_path)
+        parser = parser_class(pdf_path)
+        parser.extract_text()
+    else:
         # Use specified parser
-        parser_class = ParserFactory.PARSERS.get(insurer_type, GenericParser)
-        return parser_class(pdf_path)
+        parser_class = ParserRegistry.get_parser_class(document_guid)
+        if not parser_class:
+            # Fallback to generic if GUID not found
+            logger.warning(f"Unknown document_guid: {document_guid}, using GenericParser")
+            parser_class = GenericParser
+        
+        parser = parser_class(pdf_path)
+        parser.extract_text()
+    
+    return parser
 
 
 # API Endpoints
@@ -432,21 +89,87 @@ async def root():
     return {
         "status": "online",
         "service": "Insurance Policy Parser API",
-        "version": "1.0.0"
+        "version": "2.0.0"
+    }
+
+
+@app.get("/document-types")
+async def get_document_types():
+    """
+    Get list of all supported document types.
+    
+    Returns information about each document type including:
+    - GUID for API calls
+    - Human-readable name
+    - Associated insurer
+    - Implementation status
+    """
+    document_types = []
+    for guid, info in DOCUMENT_TYPE_REGISTRY.items():
+        document_types.append({
+            "guid": guid,
+            "name": info.name,
+            "insurer": info.insurer,
+            "description": info.description,
+            "status": info.status
+        })
+    
+    return {
+        "documentTypes": document_types,
+        "autoDetectGuid": DocumentGuid.AUTO_DETECT.value,
+        "totalCount": len(document_types)
     }
 
 
 @app.get("/supported-insurers")
 async def supported_insurers():
-    """Get list of supported insurance providers"""
+    """
+    Get list of supported insurance providers.
+    
+    Groups document types by insurer and shows status for each.
+    """
+    insurers = list_supported_insurers()
+    
     return {
-        "supported": [
-            {"id": "discovery", "name": "Discovery Insure", "status": "fully_supported"},
-            {"id": "santam", "name": "Santam", "status": "coming_soon"},
-            {"id": "old_mutual", "name": "Old Mutual", "status": "coming_soon"},
-            {"id": "outsurance", "name": "Outsurance", "status": "coming_soon"},
-        ],
-        "auto_detect": True
+        "insurers": insurers,
+        "autoDetect": True,
+        "autoDetectGuid": DocumentGuid.AUTO_DETECT.value
+    }
+
+
+@app.get("/document-type/{document_guid}")
+async def get_document_type_info(document_guid: str):
+    """
+    Get detailed information about a specific document type.
+    
+    Args:
+        document_guid: The document type GUID
+        
+    Returns:
+        Detailed information about the document type
+    """
+    doc_info = get_document_info(document_guid)
+    
+    if not doc_info:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document type not found: {document_guid}"
+        )
+    
+    # Get parser class info
+    parser_class = ParserRegistry.get_parser_class(document_guid)
+    supported_fields = []
+    if parser_class:
+        supported_fields = parser_class.get_supported_fields()
+    
+    return {
+        "guid": doc_info.guid,
+        "name": doc_info.name,
+        "insurer": doc_info.insurer,
+        "description": doc_info.description,
+        "status": doc_info.status,
+        "parserClass": doc_info.parser_class_name,
+        "supportedFields": supported_fields
     }
 
 
@@ -458,8 +181,11 @@ async def parse_from_url(payload: ParseUrlRequest):
     Body:
         {
           "pdf_url": "https://example.com/policy.pdf",
-          "insurer": "auto"
+          "document_guid": "auto-d3t3-ct00-0000"  // Optional, defaults to auto-detect
         }
+        
+    Returns:
+        Structured JSON data extracted from the policy
     """
 
     # Validate URL format
@@ -494,12 +220,18 @@ async def parse_from_url(payload: ParseUrlRequest):
     try:
         logger.info(
             f"Processing PDF from URL, size: {len(pdf_bytes)} bytes, "
-            f"insurer: {payload.insurer}"
+            f"document_guid: {payload.document_guid}"
         )
 
-        parser = ParserFactory.create_parser(tmp_path, payload.insurer)
-        parser.extract_text()
+        parser = create_parser(tmp_path, payload.document_guid)
         result = parser.parse()
+        
+        # Add metadata
+        result["_metadata"] = {
+            "documentGuid": payload.document_guid,
+            "parserClass": parser.__class__.__name__,
+            "sourceType": "url"
+        }
 
         logger.info("Successfully parsed PDF from URL")
 
@@ -511,7 +243,9 @@ async def parse_from_url(payload: ParseUrlRequest):
 
     finally:
         if os.path.exists(tmp_path):
-            os.remove(tmp_path)    
+            os.remove(tmp_path)
+
+
 @app.post("/parse-json")
 async def parse_policy_json(payload: ParseJsonRequest):
     """
@@ -520,9 +254,12 @@ async def parse_policy_json(payload: ParseJsonRequest):
     Body:
         {
           "filename": "policy.pdf",
-          "insurer": "auto",
+          "document_guid": "auto-d3t3-ct00-0000",  // Optional, defaults to auto-detect
           "file_base64": "<base64-encoded PDF bytes>"
         }
+        
+    Returns:
+        Structured JSON data extracted from the policy
     """
 
     # Decode base64
@@ -543,12 +280,19 @@ async def parse_policy_json(payload: ParseJsonRequest):
     try:
         logger.info(
             f"Processing JSON-uploaded file: {payload.filename}, size: {len(pdf_bytes)} bytes, "
-            f"insurer: {payload.insurer}"
+            f"document_guid: {payload.document_guid}"
         )
 
-        parser = ParserFactory.create_parser(tmp_path, payload.insurer)
-        parser.extract_text()
+        parser = create_parser(tmp_path, payload.document_guid)
         result = parser.parse()
+        
+        # Add metadata
+        result["_metadata"] = {
+            "documentGuid": payload.document_guid,
+            "parserClass": parser.__class__.__name__,
+            "sourceType": "base64",
+            "filename": payload.filename
+        }
 
         logger.info(f"Successfully parsed JSON-uploaded file: {payload.filename}")
 
@@ -562,17 +306,18 @@ async def parse_policy_json(payload: ParseJsonRequest):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+
 @app.post("/parse")
 async def parse_policy(
     file: UploadFile = File(...),
-    insurer: Optional[InsurerType] = InsurerType.AUTO
+    document_guid: Optional[str] = DocumentGuid.AUTO_DETECT.value
 ):
     """
-    Parse an insurance policy schedule PDF
+    Parse an insurance policy schedule PDF (file upload).
     
     Args:
         file: PDF file to parse
-        insurer: Insurance provider (auto-detect by default)
+        document_guid: Document type GUID (auto-detect by default)
     
     Returns:
         Structured JSON data extracted from the policy
@@ -591,12 +336,16 @@ async def parse_policy(
     try:
         logger.info(f"Processing file: {file.filename}, size: {len(content)} bytes")
         
-        # Create appropriate parser
-        parser = ParserFactory.create_parser(tmp_path, insurer)
-        parser.extract_text()
-        
-        # Parse the document
+        parser = create_parser(tmp_path, document_guid)
         result = parser.parse()
+        
+        # Add metadata
+        result["_metadata"] = {
+            "documentGuid": document_guid,
+            "parserClass": parser.__class__.__name__,
+            "sourceType": "upload",
+            "filename": file.filename
+        }
         
         logger.info(f"Successfully parsed {file.filename}")
         
@@ -613,13 +362,16 @@ async def parse_policy(
 
 
 @app.post("/parse-from-path")
-async def parse_from_path(filepath: str, insurer: Optional[InsurerType] = InsurerType.AUTO):
+async def parse_from_path(
+    filepath: str,
+    document_guid: Optional[str] = DocumentGuid.AUTO_DETECT.value
+):
     """
-    Parse an insurance policy schedule from a file path
+    Parse an insurance policy schedule from a file path.
     
     Args:
         filepath: Absolute path to PDF file
-        insurer: Insurance provider (auto-detect by default)
+        document_guid: Document type GUID (auto-detect by default)
     
     Returns:
         Structured JSON data extracted from the policy
@@ -635,12 +387,16 @@ async def parse_from_path(filepath: str, insurer: Optional[InsurerType] = Insure
     try:
         logger.info(f"Processing file from path: {filepath}")
         
-        # Create appropriate parser
-        parser = ParserFactory.create_parser(filepath, insurer)
-        parser.extract_text()
-        
-        # Parse the document
+        parser = create_parser(filepath, document_guid)
         result = parser.parse()
+        
+        # Add metadata
+        result["_metadata"] = {
+            "documentGuid": document_guid,
+            "parserClass": parser.__class__.__name__,
+            "sourceType": "filepath",
+            "filepath": filepath
+        }
         
         logger.info(f"Successfully parsed {filepath}")
         

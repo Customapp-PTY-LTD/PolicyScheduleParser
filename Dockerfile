@@ -1,16 +1,12 @@
-# Dockerfile for Insurance Policy Parser API
+# Dockerfile for Insurance Policy Parser API - AWS Lambda Deployment
+# Uses AWS Lambda Python base image for compatibility
 
-FROM python:3.11-slim
+FROM public.ecr.aws/lambda/python:3.11
 
-# Set working directory
-WORKDIR /app
+# Set working directory to Lambda task root
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
+# Copy requirements first for better caching
 COPY requirements.txt .
 
 # Install Python dependencies
@@ -18,16 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY insurance_parser_api.py .
+COPY lambda_handler.py .
+COPY document_types.py .
 
-# Create directory for temporary files
-RUN mkdir -p /tmp/uploads
+# Copy parsers package
+COPY parsers/ ./parsers/
 
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/')"
-
-# Run the application
-CMD ["uvicorn", "insurance_parser_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Set the Lambda handler
+CMD ["lambda_handler.lambda_handler"]
