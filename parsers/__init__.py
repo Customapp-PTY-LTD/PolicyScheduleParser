@@ -7,11 +7,13 @@ from .base_parser import BaseParser
 from .discovery_parser import DiscoveryParser
 from .santam_parser import SantamParser
 from .generic_parser import GenericParser
+from .hollard_parser import HollardParser
 
 __all__ = [
     'BaseParser',
     'DiscoveryParser',
     'SantamParser', 
     'GenericParser',
+    'HollardParser',
 ]
 

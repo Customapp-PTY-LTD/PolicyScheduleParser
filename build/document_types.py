@@ -32,6 +32,9 @@ class DocumentGuid(str, Enum):
     # Outsurance Documents
     OUTSURANCE_POLICY_SCHEDULE_V1 = "0uts-p0l1-sch3-v001"
     
+    # Hollard Documents
+    HOLLARD_PRIVATE_PORTFOLIO_V1 = "h0ll-pr1v-p0rt-v001"
+    
     # Auto-detect (system will try to identify the document)
     AUTO_DETECT = "auto-d3t3-ct00-0000"
 
@@ -99,6 +102,14 @@ DOCUMENT_TYPE_REGISTRY: Dict[str, DocumentTypeInfo] = {
         parser_class_name="GenericParser",
         status="stub"
     ),
+    DocumentGuid.HOLLARD_PRIVATE_PORTFOLIO_V1.value: DocumentTypeInfo(
+        guid=DocumentGuid.HOLLARD_PRIVATE_PORTFOLIO_V1.value,
+        name="Hollard Private Portfolio Policy Schedule",
+        insurer="Hollard Insurance",
+        description="Hollard Private Portfolio policy schedule containing motor, household contents, all risks, and personal liability cover",
+        parser_class_name="HollardParser",
+        status="active"
+    ),
 }
 
 
@@ -120,12 +131,13 @@ class ParserRegistry:
             return
         
         # Import parser classes
-        from parsers import DiscoveryParser, SantamParser, GenericParser
+        from parsers import DiscoveryParser, SantamParser, GenericParser, HollardParser
         
         cls._parser_classes = {
             "DiscoveryParser": DiscoveryParser,
             "SantamParser": SantamParser,
             "GenericParser": GenericParser,
+            "HollardParser": HollardParser,
         }
         cls._initialized = True
     
